@@ -26,7 +26,7 @@ fi
 
 # update system
 echo
-echo "Update and Upgrade sysem..."
+echo "Update and Upgrade system..."
 echo
 apt-get --yes --force-yes update
 apt-get --yes --force-yes upgrade
@@ -36,46 +36,29 @@ echo
 echo "Install Kivy..."
 echo
 ## Kivy dependencies
-apt-get --yes --force-yes install libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev \
-   pkg-config libgl1-mesa-dev libgles2-mesa-dev \
-   python-setuptools libgstreamer1.0-dev git-core \
-   gstreamer1.0-plugins-{bad,base,good,ugly} \
-   gstreamer1.0-{omx,alsa} python-dev libmtdev-dev \
-   xclip python-pip
-
-## Cython
-pip install -U Cython==0.28.2
+apt-get --no-install-recommends --yes install \
+	libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev \
+	pkg-config libgl1-mesa-dev libgles2-mesa-dev \
+	python3-pygame python3-opengl python3-enchant python3-dev \
+	python3-setuptools libgstreamer1.0-dev git-core \
+	gstreamer1.0-plugins-{bad,base,good,ugly} \
+	gstreamer1.0-{omx,alsa} libmtdev-dev \
+	xclip python3-pip cython3 git
 
 ## Kivy inself
-pip install git+https://github.com/kivy/kivy.git@master
+pip3 install git+https://github.com/kivy/kivy.git@master
 
 # MPG123
-echo
-echo "Install MPG123..."
-echo
-MPG123_VERSION="1.25.10"
-# donwload and extract MPG123
-wget http://mpg123.de/download/mpg123-$MPG123_VERSION.tar.bz2
-tar xvjf mpg123-$MPG123_VERSION.tar.bz2
-cd mpg123-$MPG123_VERSION
-
-# install
-./configure --with-audio=pulse
-make
-make install
-cd ..
-rm -rf mpg123-$MPG123_VERSION
-rm mpg123-$MPG123_VERSION.tar.bz2
-
-# set config
-echo "/usr/local/lib" > /etc/ld.so.conf.d/locallib.conf
-ldconfig
+#echo
+#echo "Install MPG123..."
+#echo
+apt-get --no-install-recommends --yes install mpg123
 
 # Pulseaudio
 echo
 echo "Install Pulseaudio..."
 echo
-# get pulsaudio
+# get pulseaudio
 apt-get --yes --force-yes install git pulseaudio pulseaudio-utils libpulse-dev bc
 git clone https://github.com/graysky2/pulseaudio-ctl.git
 cd pulseaudio-ctl
@@ -103,7 +86,7 @@ echo "Setup Radio..."
 echo
 
 # additional packages
-apt-get --yes --force-yes install python-requests mtdev-tools
+apt-get --yes --force-yes install python3-requests mtdev-tools
 
 # add systemd services
 cd systemd

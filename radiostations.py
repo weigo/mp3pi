@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 # -*- coding: utf-8 -*-
 """
 Das Modul lädt Stationslisten (entweder von radio.de oder aus
@@ -11,10 +11,6 @@ import requests
 import json
 
 #import pdb
-
-reload(sys)
-sys.setdefaultencoding('utf-8')
-
 
 class RadioStations():
   """Die Klasse für Stationslisten und -daten."""
@@ -62,13 +58,13 @@ class RadioStations():
 
     try:
       response  = requests.get(url, headers = self._user_agent)
-      #print(response.status_code)
+      print(response.status_code)
       self.data = response.json()
       self.no_data = False
-    except requests.HTTPError, e:
+    except requests.HTTPError as e:
       print("HTTP error %s" % e.code)
       self.no_data = False
-    except requests.ConnectionError, e:
+    except requests.ConnectionError as e:
       self.data.append({'name': 'no station data'}) 
       self.no_data = True
       print("Connection error %s", e)
@@ -167,9 +163,9 @@ if __name__ == '__main__':
     print('no data')
   else:
     for i,station in enumerate(Stations.data):
-      print "{:5}: {}, {} - {}".format(
+      print("{:5}: {}, {} - {}".format(
         i,
         station['name'],
         station['country'],
         station['genresAndTopics']
-      )
+      ))

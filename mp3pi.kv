@@ -1,23 +1,34 @@
-#:import ListItemButton kivy.uix.listview.ListItemButton
-#:import ListView kivy.uix.listview.ListView
-#:import ListAdapter kivy.adapters.listadapter.ListAdapter
 #:import Factory kivy.factory.Factory
 
-<ListItemButtonTitle@ListItemButton>:
+<Station>:
+  canvas.before:
+    Color:
+      rgba: (10, 10, 10, 10) if self.selected else (0, 0.517, 0.705, 1)
+    Rectangle:
+      pos: self.pos
+      size: self.size
   font_size: 30
   size_hint_y: None
-  height: 60
-  line_height: 1
+  orientation: 'vertical'
+  row_index: id_row_index.text
+  pos: self.pos
+  size: self.size
+  value: ''
+  background_color: [1, 0, 0, 1]  if self.selected else [1, 1, 1, 1]  # dark red else dark grey
+#  on_release: parent.root.change_selection(None, self.index)
+  Label:
+    id: id_row_index 
+    text: root.text
 
 <Mp3PiAppLayout>:
   name: 'main'
   fullscreen: True
-
   # Declaration of widgets for python code
   imageid: imageid
   wlanstatus: wlanstatus
   search_results_list: search_results_list
-  search_results_slider: search_results_slider
+  search_results_list_controller: search_results_list_controller
+#  search_results_slider: search_results_slider
   infotext: infotext
   volume_slider: volume_slider
   
@@ -82,26 +93,32 @@
               width: 2 
               circle: (self.x + 30, self.y + 60, 1)
 
-      MyListView:
+      StationListView:
         id: search_results_list
-        #height: 50 
-#       size_hint_y: None
-#       size_hint: (0.9, 0.9)
-        adapter:
-          ListAdapter(data=[],
-          selection_mode='single',
-          cls=Factory.ListItemButtonTitle,
-          args_converter=root.args_converter
-          )
-      
-      Slider:
-        id: search_results_slider
-        min: 0
-        max: 1
-        step: 0.01
-        value: 1
-        orientation: 'vertical'
-        size_hint: (0.1, 0.95)
+        viewclass: 'Station'
+        scroll_type: ['bars', 'content']
+        scroll_wheel_distance: dp(114)
+        bar_width: dp(10)
+        SelectableRecycleBoxLayout:
+          default_size: None, dp(56)
+          default_size_hint: 1, None
+          size_hint_y: None
+          height: self.minimum_height
+          orientation: 'vertical'
+          spacing: dp(2)
+          id: search_results_list_controller
+          key_selection: 'selectable'
+          multiselect: False
+          touch_multiselect: False
+
+#      Slider:
+#        id: search_results_slider
+#        min: 0
+#        max: 1
+#        step: 0.01
+#        value: 1
+#        orientation: 'vertical'
+#        size_hint: (0.1, 0.95)
 
     BoxLayout:
       orientation: 'horizontal'

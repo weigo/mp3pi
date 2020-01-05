@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 # -*- coding: utf-8 -*-
 """
 Das Modul definiert die Klasse nmcli zur Kommunikation mit dem
@@ -35,16 +35,19 @@ class nmcli:
     Rückgabe ist eine Liste von Dictionaries mit 'fields' als Schlüsseln.
     Im Fehlerfall wird eine leere Liste geliefert.
     """
-    command = ['nmcli', '--terse', '--fields', ','.join(fields)]
-    command.extend(args)
-    retcode, stdout, stderr = self.shell(command)
-    
     data = []
-    if retcode == 0:
+    try:
+      command = ['nmcli', '--terse', '--fields', ','.join(fields)]
+      command.extend(args)
+      stdout = subprocess.check_output(command).decode('utf-8')
+    
       for line in stdout.split("\n"):
         values = line.split(':', len(fields)-1)
         row = dict(zip(fields, values))
         data.append(row)
+    except ValueError:
+      pass
+    
     return data
 
   def list_ap(self):
@@ -143,13 +146,13 @@ if __name__ == '__main__':
 
   NMCLI = nmcli()
   import json
-  print 'AP list:'
-  print json.dumps(NMCLI.list_ap(), indent=2)
-  print 'Connections:'
-  print json.dumps(NMCLI.list_connections(), indent=2)
-  print 'Current connection:'
-  print json.dumps(NMCLI.current_connection(), indent=2)
-  print 'Connection detail:'
-  print json.dumps(NMCLI.connection_detail(), indent=2, sort_keys=True)
-  print 'IP: {}'.format(NMCLI.get_ip())
+  print('AP list:')
+  print(json.dumps(NMCLI.list_ap(), indent=2))
+  print('Connections:')
+  print(json.dumps(NMCLI.list_connections(), indent=2))
+  print('Current connection:')
+  print(json.dumps(NMCLI.current_connection(), indent=2))
+  print('Connection detail:')
+  print(json.dumps(NMCLI.connection_detail(), indent=2, sort_keys=True))
+  print('IP: {}'.format(NMCLI.get_ip()))
 

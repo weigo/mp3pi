@@ -5,7 +5,7 @@ Requires=pulseaudio.service
 
 [Service]
 #Type=forking
-ExecStart=/usr/bin/python mp3.py
+ExecStart=/usr/bin/python3 mp3.py
 Environment=XDG_RUNTIME_DIR=/run/user/0
 RestartSec=5
 Restart=always

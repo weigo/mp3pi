@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 # -*- coding: utf-8 -*-
 """
 Diese Datei bildet das Hauptprogramm des mp3pi-Projekts.
@@ -16,31 +16,32 @@ from functools import partial
 
 os.environ['KIVY_NO_FILELOG'] = '1'
 from kivy.app import App
+from kivy.clock import Clock, mainthread
 from kivy.config import Config
 from kivy.core.window import Window
 from kivy.graphics import Color
 from kivy.logger import Logger
+from kivy.properties import BooleanProperty
+from kivy.properties import ObjectProperty
+from kivy.uix.behaviors import FocusBehavior
+from kivy.uix.button import Button
+from kivy.uix.recycleboxlayout import RecycleBoxLayout
+from kivy.uix.recycleview import RecycleView
+from kivy.uix.recycleview.layout import LayoutSelectionBehavior
+from kivy.uix.recycleview.views import RecycleDataViewBehavior
 from kivy.uix.screenmanager import ScreenManager, Screen, NoTransition
 from kivy.uix.settings import SettingsWithTabbedPanel
-from kivy.uix.listview import ListView
-from kivy.properties import ObjectProperty
-from kivy.clock import Clock, mainthread
 
 from nmcli import nmcli
 from radiostations import RadioStations
 from screensaver import Rpi_ScreenSaver
 from imageviewer import ImageViewer
 
-from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, HTTPServer
 import markup
 
 import pdb
 import pprint
-
-
-reload(sys)
-sys.setdefaultencoding('utf-8')
-
 
 RootApp = "init"
 ConfigObject = None
@@ -48,29 +49,116 @@ ImageViewerObject = None
 last_activity_time = 0
 
 audio_interface = "pulse"
+#audio_interface = "alsa"
 '''Auswahl des Audio-Interface. "pulse" oder "alsa".'''
 
 if audio_interface == "alsa":
   from audio import AlsaInterface
 
+class Station(RecycleDataViewBehavior, Button):
+  index = None
+  selected = BooleanProperty(False)
+  selectable = BooleanProperty(True)
 
-class MyListView(ListView):
+  def __init__(self, **kwargs):
+    super(Station, self).__init__(**kwargs)
 
-  def scroll_to(self, index=0):
-    if not self.scrolling:
-      self.scrolling = True
-      self._index = index
+  def refresh_view_attrs(self, rv, index, data):
+    ''' Catch and handle the view changes '''
 
-      #self.populate()
-      mstart = index * self.row_height
-      scroll_y = mstart / (self.container.height - self.height)
-      scroll_y = 1 - min(1, max(scroll_y, 0))
-      scrlv = self.container.parent
-      scrlv.scroll_y = scroll_y
-      scrlv._update_effect_y_bounds() # bug in ScrollView
+    self.index = index
+    return super(Station, self).refresh_view_attrs(
+      rv, index, data)
 
-      self.dispatch('on_scroll_complete')
+  def on_touch_down(self, touch):
+    ''' Add selection on touch down '''
+    if super(Station, self).on_touch_down(touch):
+      return True
+    if self.collide_point(*touch.pos) and self.selectable:
+      return self.parent.select_with_touch(self.index, touch)
 
+  def apply_selection(self, rv, index, is_selected):
+    ''' Respond to the selection of items in the view. '''
+    self.selected = is_selected
+
+class StationListView(RecycleView):
+  def __init__(self, **kwargs):
+    self.data = []
+    super(StationListView, self).__init__(**kwargs)
+
+  def scroll_to_index(self, index):
+    box = self.children[0]
+    pos_index = (box.default_size[1] + box.spacing) * index
+    scroll = self.convert_distance_to_scroll(
+      0, pos_index - (self.height * 0.5))[1]
+    if scroll > 1.0:
+      scroll = 1.0
+    elif scroll < 0.0:
+      scroll = 0.0
+    self.scroll_y = 1.0 - scroll
+
+  def convert_distance_to_scroll(self, dx, dy):
+    box = self.children[0]
+    wheight = box.default_size[1] + box.spacing
+
+    if not self._viewport:
+      return 0, 0
+    vp = self._viewport
+    vp_height = len(self.data) * wheight
+    if vp.width > self.width:
+      sw = vp.width - self.width
+      sx = dx / float(sw)
+    else:
+      sx = 0
+    if vp_height > self.height:
+      sh = vp_height - self.height
+      sy = dy / float(sh)
+    else:
+      sy = 1
+    return sx, sy
+
+class SelectableRecycleBoxLayout(FocusBehavior, LayoutSelectionBehavior,
+                                 RecycleBoxLayout):
+  ''' Adds selection and focus behaviour to the view. '''
+
+  def get_nodes(self):
+    nodes = self.get_selectable_nodes()
+    if self.nodes_order_reversed:
+      nodes = nodes[::-1]
+    if not nodes:
+      return None, None
+
+    selected = self.selected_nodes
+    if not selected:  # nothing selected, select the first
+      self.select_node(nodes[0])
+      return None, None
+
+    if len(nodes) == 1:  # the only selectable node is selected already
+      return None, None
+
+    last = nodes.index(selected[-1])
+    self.clear_selection()
+    return last, nodes
+
+  def select_next(self):
+    last, nodes = self.get_nodes()
+    if not nodes:
+      return
+
+    if last == len(nodes) - 1:
+      self.select_node(nodes[0])
+    else:
+      self.select_node(nodes[last + 1])
+
+  def select_previous(self):
+    last, nodes = self.get_nodes()
+    if not nodes:
+      return
+
+    if not last:
+      self.select_node(nodes[-1])
+    else:
+      self.select_node(nodes[last - 1])
 
 class Mp3PiAppLayout(Screen):
   """Die Kivy-Layoutklasse."""
@@ -92,44 +180,10 @@ class Mp3PiAppLayout(Screen):
   imageid = ObjectProperty(None)
   wlanstatus = ObjectProperty(None)
   search_results_list = ObjectProperty(None)
+  search_results_list_controller = ObjectProperty(None)
   search_results_slider = ObjectProperty(None)
   infotext = ObjectProperty(None)
   volume_slider = ObjectProperty(None)
-
-  def args_converter(self, row_index, an_obj):
-    """Argument-Konverter für den ListAdapter des ListView der Stationsliste.
-    
-    Eingabe ist der Zeilenindex row_index des zu konstruierenden
-    ListView-Elements und das Datenobjekt an_obj. Es enthält
-    das Dictionary mit Stationsdaten, wie es von der Klasse
-    Radiostations generiert wird.
-
-    Rückgabewert ist ein Dictionary, das zur Konstruktion des
-    ListItemButtonTitle verwendet wird.
-    """
-    name = an_obj['name']
-    if row_index % 2:
-      background = [1, 1, 1, 0]
-    else:
-      background = [1, 1, 1, .5]
-
-    return {'text': name,
-            'deselected_color': background,
-#            'on_touch_down': partial(self.create_longtouch_clock, row_index),
-#            'on_touch_up': partial(self.delete_longtouch_clock, row_index)
-            }
-
-#  def create_longtouch_clock(self, index, widget, touch, *args):
-#    callback = partial(self.long_touch_event, index, touch)
-#    Clock.schedule_once(callback, 2)
-#    touch.ud['event'] = callback
-#
-#  def delete_longtouch_clock(self, index, widget, touch, *args):
-#    if 'event' in touch.ud:
-#      Clock.unschedule(touch.ud['event'])
-#
-#  def long_touch_event(self, index, touch, dt):
-#    print('LongTouch index={} pos={}'.format(index, touch.pos))
 
   def __init__(self, **kwargs):
     global RootApp, audio_interface
@@ -139,24 +193,23 @@ class Mp3PiAppLayout(Screen):
     
     self.default_image = self.imageid.source
 
-    self.search_results_list.adapter.bind(on_selection_change=self.change_selection)
-
     try:
       if audio_interface == "alsa":
         vol = Alsa.get_volume("")
       else:
-        vol = int(subprocess.check_output(["pulseaudio-ctl", "full-status"]).split(" ")[0])
+        output = subprocess.check_output(["pulseaudio-ctl", "full-status"])
+        vol = int(output.decode('utf-8').split(" ")[0])
     except ValueError:
       pass
     else:
       self.volume_slider.value = vol
 
     # Set up the draggable scrollbar    
-    scrlv = self.search_results_list.container.parent # The ListView's ScrollView
-    scrls = self.search_results_slider
-    scrlv.bind(scroll_y=partial(self.scroll_slider,scrls))
-    scrls.bind(value=partial(self.scroll_list,scrlv))
-    
+    scrlv = self.search_results_list # The ListView's ScrollView
+#    scrls = self.search_results_slider
+#    scrlv.bind(scroll_y=partial(self.scroll_slider,scrls))
+#    scrls.bind(value=partial(self.scroll_list,scrlv))
+    self.search_results_list.layout_manager.bind(selected_nodes=self.change_selection)
     self.start_status_thread()
 
   def scroll_list(self, scrlv, scrls, value):
@@ -190,20 +243,27 @@ class Mp3PiAppLayout(Screen):
     else:
       os.system("pulseaudio-ctl set %s%%" % (vol))
 
-  def change_selection(self, adapter):
+  def change_selection(self, inst, val):
     """Wechsel der Startionsauswahl.
     
     Gebunden an die on_selection_change-Property von search_results_list in __init__
     """
     global ConfigObject
 
-    if adapter.selection:
+    selection = -1
+    for value in val:
+      if value is not None:
+        selection = value
+
+    if -1 < selection:
+      self.last_selection_index = selection
+      station_name = self.search_results_list.data[self.last_selection_index].get('text')
       self.stop_player_thread()
-      station_name = adapter.selection[0].text
       self.change_image(station_name)
       self.start_player_thread(Stations.getStreamURLbyName(station_name))
       ConfigObject.set('General', 'last_station', station_name)
       ConfigObject.write()
+      self.search_results_list.scroll_to_index(self.last_selection_index)
     else:
       self.stop_player_thread()
 
@@ -221,7 +281,7 @@ class Mp3PiAppLayout(Screen):
     """
     if self.isPlaying:
       Logger.info("Mp3Pi GUI: stopping player")
-      if self.playerthread.isAlive(): 
+      if self.playerthread.is_alive():
         Logger.info("Mp3Pi GUI: notifying player thread")
         self.playerproc_stop.set()
         self.playerthread.join(.3)
@@ -280,8 +340,10 @@ class Mp3PiAppLayout(Screen):
   @mainthread
   def update_search_results_list(self):
     """Update der search_result_list (im Mainthread)."""
-    del self.search_results_list.adapter.data[:]
-    self.search_results_list.adapter.data.extend(Stations.data)
+    self.search_results_list.data = sorted(map(lambda s: {
+      'text': s['name'],
+      'selected': False,
+      'selectable': True}, Stations.data), key=lambda s: s['text'])
     station_name = ConfigObject.get('General','last_station')
     if station_name is not None:
       index = Stations.getIndexByName(station_name)
@@ -300,7 +362,7 @@ class Mp3PiAppLayout(Screen):
     args = ["mpg123", "--no-control", "--list", url]
     args.extend(["--output", audio_interface])
     #args.extend(["--buffer", "2048"])
-    proc = subprocess.Popen(args, stderr=subprocess.PIPE, bufsize=0)
+    proc = subprocess.Popen(args, shell=False, stdin=None, stderr=subprocess.PIPE, bufsize=0)
     Logger.info("Player: started pid %s" % proc.pid)
 
     line = []
@@ -309,10 +371,10 @@ class Mp3PiAppLayout(Screen):
     self.update_infotext('*** Starting ***')
 
     while not self.playerproc_stop.is_set():
-
       while (not self.playerproc_stop.is_set()
         and proc is not None
         and select.select([proc.stderr], [], [], .1)[0]):
+
 
         # check if mpg123 has died
         if proc.returncode is not None:
@@ -321,11 +383,12 @@ class Mp3PiAppLayout(Screen):
           break
 
         char = proc.stderr.read(1)
-        if char != "\n":
+
+        if char != b'\n':
           line.append(char)
           continue
 
-        line_joined = "".join(line)
+        line_joined = str(b"".join(line), "UTF-8")
 
         Logger.info("mpg123: %s" % line_joined)
         
@@ -335,7 +398,7 @@ class Mp3PiAppLayout(Screen):
           break
           
         if "ICY-NAME: " in line_joined:
-          res = re.search(r"ICY-NAME: (.*)", line_joined)
+          res = re.search("ICY-NAME: (.*)", line_joined)
           if res is not None:
             self.update_infotext(res.group(1))
 
@@ -347,7 +410,7 @@ class Mp3PiAppLayout(Screen):
           #    res = re.search(r"([A-Za-z]*)='(.*)'", element)
           #    pairs[res.group(1)] = res.group(2)
           #self.update_infotext(pairs['StreamTitle'])
-          res = re.search(r"StreamTitle='(.*?)';", line_joined)
+          res = re.search("StreamTitle='(.*?)';", line_joined)
           if res is not None:
             self.update_infotext(res.group(1))
           else:
@@ -447,38 +510,24 @@ class Mp3PiAppLayout(Screen):
     Logger.info("Status: stopping")
     self.statusproc_stop.clear()
 
-  def jump_to_index(self, index):
-    """Zum index-ten Eintrag der Stationsliste springen und ihn auswählen."""
-    self.search_results_list.scroll_to(index)
-    self.search_results_list.adapter.get_view(index).trigger_action(duration=0)
-
   def pause(self):
     """on_release-Callback des Pause/Play-Button; s. mp3pi.kv"""
     if self.isPlaying:
       self.stop_player_thread()
-      self.last_selection_index = self.search_results_list.adapter.selection[0].index
-      self.search_results_list.adapter.deselect_list(self.search_results_list.adapter.selection)
+      self.search_results_list_controller.deselect_node(self.last_selection_index)
       self.imageid.source = self.default_image
     else:
       if self.last_selection_index is not None:
-        self.jump_to_index(self.last_selection_index)
+        self.search_results_list_controller.select_node(self.last_selection_index)
 
   def next(self):
     """on_release-Callback des Next-Button; s. mp3pi.kv"""
-    self.stop_player_thread()
-    if self.search_results_list.adapter.selection:
-      index = self.search_results_list.adapter.selection[0].index
-      if index < len(self.search_results_list.adapter.data):
-        self.jump_to_index(index+1)
+    self.search_results_list_controller.select_next()
 
   def prev(self):
     """on_release-Callback des Previous-Button; s. mp3pi.kv"""
-    self.stop_player_thread()
-    if self.search_results_list.adapter.selection:
-      index = self.search_results_list.adapter.selection[0].index
-      if index >= 1:
-        self.jump_to_index(index-1)
-        
+    self.search_results_list_controller.select_previous()
+
   def poweroff(self):
     """on_release-Callback des Poweroff-Button; s. mp3pi.kv"""
     Logger.info("Mp3Pi GUI: poweroff")
