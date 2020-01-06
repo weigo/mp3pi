@@ -12,7 +12,6 @@ import threading
 import time
 import signal
 import select
-from functools import partial
 
 os.environ['KIVY_NO_FILELOG'] = '1'
 from kivy.app import App
@@ -39,9 +38,6 @@ from imageviewer import ImageViewer
 
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import markup
-
-import pdb
-import pprint
 
 RootApp = "init"
 ConfigObject = None
@@ -270,6 +266,10 @@ class Mp3PiAppLayout(Screen):
   def change_image(self, station_name):
     """Wechsel des Stations-Bildes."""
     imageUrl = Stations.getImageUrlByName(station_name) 
+
+    if (imageUrl == ''):
+      imageUrl = self.default_image
+
     Logger.info("Mp3Pi GUI: Loading Image from %s" % (imageUrl))
     self.imageid.source = imageUrl
 
@@ -343,7 +343,7 @@ class Mp3PiAppLayout(Screen):
     self.search_results_list.data = sorted(map(lambda s: {
       'text': s['name'],
       'selected': False,
-      'selectable': True}, Stations.data), key=lambda s: s['text'])
+      'selectable': True}, Stations.data), key=lambda s: s['rank'])
     station_name = ConfigObject.get('General','last_station')
     if station_name is not None:
       index = Stations.getIndexByName(station_name)
@@ -485,7 +485,7 @@ class Mp3PiAppLayout(Screen):
         self.update_infotext('')
       
       # screensaver
-      timeout = max(30, int(ConfigObject.get('General', 'screensaver')))
+      timeout = max(30, ConfigObject.getint('General', 'screensaver'))
 
       if (time.time() - last_activity_time) > timeout:
         if self.manager.current == 'main':
