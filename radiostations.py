@@ -59,7 +59,7 @@ class RadioStations():
     try:
       response  = requests.get(url, headers = self._user_agent)
       print(response.status_code)
-      self.data = response.json()
+      self.data = sorted(response.json(), key=lambda s: s['name'])
       self.no_data = False
     except requests.HTTPError as e:
       print("HTTP error %s" % e.code)

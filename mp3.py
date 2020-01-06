@@ -340,10 +340,10 @@ class Mp3PiAppLayout(Screen):
   @mainthread
   def update_search_results_list(self):
     """Update der search_result_list (im Mainthread)."""
-    self.search_results_list.data = sorted(map(lambda s: {
+    self.search_results_list.data = map(lambda s: {
       'text': s['name'],
       'selected': False,
-      'selectable': True}, Stations.data), key=lambda s: s['rank'])
+      'selectable': True}, Stations.data)
     station_name = ConfigObject.get('General','last_station')
     if station_name is not None:
       index = Stations.getIndexByName(station_name)
