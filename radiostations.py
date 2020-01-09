@@ -10,8 +10,6 @@ import sys
 import requests
 import json
 
-#import pdb
-
 class RadioStations():
   """Die Klasse für Stationslisten und -daten."""
 
@@ -57,8 +55,7 @@ class RadioStations():
     #url = "http://radio.de/info/broadcast/editorialreccomendationsembedded"
 
     try:
-      response  = requests.get(url, headers = self._user_agent)
-      print(response.status_code)
+      response  = requests.get(url, headers=self._user_agent)
       self.data = sorted(response.json(), key=lambda s: s['name'])
       self.no_data = False
     except requests.HTTPError as e:

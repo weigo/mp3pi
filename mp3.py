@@ -15,8 +15,7 @@ import select
 
 os.environ['KIVY_NO_FILELOG'] = '1'
 from kivy.app import App
-from kivy.clock import Clock, mainthread
-from kivy.config import Config
+from kivy.clock import mainthread, Clock
 from kivy.core.window import Window
 from kivy.graphics import Color
 from kivy.logger import Logger
@@ -31,10 +30,10 @@ from kivy.uix.recycleview.views import RecycleDataViewBehavior
 from kivy.uix.screenmanager import ScreenManager, Screen, NoTransition
 from kivy.uix.settings import SettingsWithTabbedPanel
 
+from imageviewer import ImageViewer
 from nmcli import nmcli
 from radiostations import RadioStations
 from screensaver import Rpi_ScreenSaver
-from imageviewer import ImageViewer
 
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import markup
@@ -73,9 +72,18 @@ class Station(RecycleDataViewBehavior, Button):
     if self.collide_point(*touch.pos) and self.selectable:
       return self.parent.select_with_touch(self.index, touch)
 
+  def on_release(self):
+    if self.selected:
+      self.parent.deselect_node(self.index)
+    else:
+      self.parent.select_node(self.index)
+
+    super(Station, self).on_release()
+
   def apply_selection(self, rv, index, is_selected):
     ''' Respond to the selection of items in the view. '''
     self.selected = is_selected
+    super(Station, self).apply_selection(rv, index, is_selected)
 
 class StationListView(RecycleView):
   def __init__(self, **kwargs):
@@ -279,7 +287,7 @@ class Mp3PiAppLayout(Screen):
     Setzt den playerproc_stop-Event und wartet auf Beendigung des
     Player-Thread.
     """
-    if self.isPlaying:
+    if self.isPlaying or (self.playerthread is not None and self.playerthread.is_alive()):
       Logger.info("Mp3Pi GUI: stopping player")
       if self.playerthread.is_alive():
         Logger.info("Mp3Pi GUI: notifying player thread")
@@ -324,18 +332,19 @@ class Mp3PiAppLayout(Screen):
       if type(i) is Color:
         lines.append(i)
         i.a = 1
-    
-    if connection is not None:
-      signal = int(connection['SIGNAL'])
-      if signal < 50:
-        for i in lines[0:3]:
-          i.a = .5
-      elif signal < 60:
-        for i in lines[0:2]:
-          i.a = .5
-      elif signal < 70:
-        for i in lines[0:1]:
-          i.a = .5
+
+    signal = int(connection['SIGNAL']) if connection is not None else 0
+    max = 4
+
+    if signal < 50:
+      max = 3
+    elif signal < 70:
+      max = 2
+    elif signal < 70:
+      max = 1
+
+    for i in lines[0:max]:
+      i.a = .5
 
   @mainthread
   def update_search_results_list(self):
@@ -390,8 +399,6 @@ class Mp3PiAppLayout(Screen):
 
         line_joined = str(b"".join(line), "UTF-8")
 
-        Logger.info("mpg123: %s" % line_joined)
-        
         if 'Invalid playlist from http_open()' in line_joined:
           errorText = "*** Error opening stream ***"
           self.playerproc_stop.set()
@@ -403,13 +410,6 @@ class Mp3PiAppLayout(Screen):
             self.update_infotext(res.group(1))
 
         if "ICY-META: StreamTitle=" in line_joined:
-          #pairs = {}
-          #elements = line_joined.split(";")
-          #for element in elements:
-          #  if element:
-          #    res = re.search(r"([A-Za-z]*)='(.*)'", element)
-          #    pairs[res.group(1)] = res.group(2)
-          #self.update_infotext(pairs['StreamTitle'])
           res = re.search("StreamTitle='(.*?)';", line_joined)
           if res is not None:
             self.update_infotext(res.group(1))
@@ -547,32 +547,23 @@ class Mp3PiAppLayout(Screen):
 class Mp3PiApp(App):
   """Die Kivy-Applikationsklasse."""
   global last_activity_time, ConfigObject, ImageViewerObject
-  #global ScreenSaver
 
   def build(self):
     """Kivy build() Override Methode."""
     global last_activity_time, ConfigObject, ImageViewerObject
-    #global ScreenSaver
-    
-    self.settings_cls = MySettingsWithTabbedPanel
 
-    #Window.size = (800, 480)
+    self.settings_cls = MySettingsWithTabbedPanel
 
     def on_motion(self, etype, motionevent):
       global last_activity_time
-      #global ScreenSaver
       last_activity_time = time.time()
-      ## Catch 1st touch when screensaver is active
-      #if ScreenSaver.display_state is False:
-      #  return(True)
+
     Window.bind(on_motion=on_motion)
 
     ConfigObject = self.config
 
     sm = ScreenManager(transition=NoTransition())
     sm.add_widget(Mp3PiAppLayout())
-    #sm.add_widget(SettingsScreen())
-    #sm.add_widget(SaverScreen())
     ImageViewerObject = ImageViewer()
     sm.add_widget(ImageViewerObject)
     return(sm)
@@ -581,12 +572,12 @@ class Mp3PiApp(App):
     """Kivy App.build_config() Override Methode."""
     config.setdefaults('General', {'screensaver': "30"})
     config.setdefaults('General', {'image_turnaround': "30"})
-    #config.setdefaults('General', {'name': "name"})
     config.setdefaults('General', {'playlist': "radio.de"})
     config.setdefaults('General', {'last_station': None})
 
   def build_settings(self, settings):
     """Kivy App.build_settings() Override Methode."""
+    settings.register_type('scrolloptions', SettingScrollOptions)
     settings.add_json_panel("General", self.config, data="""
       [
         {"type"   : "numeric",
@@ -632,11 +623,12 @@ class MySettingsWithTabbedPanel(SettingsWithTabbedPanel):
   Wird verwendet, um bei Änderung der Playlist-Einstellung das
   no_data-Attribute auf True zu setzen.
   """
+
   def on_close(self):
-    Logger.info("Mp3PiApp.py: MySettingsWithTabbedPanel.on_close")
+    Logger.debug("Mp3PiApp.py: MySettingsWithTabbedPanel.on_close")
 
   def on_config_change(self, config, section, key, value):
-    if key == "playlist":
+    if key == "playlist" or key == "genre":
       Stations.no_data = True
     elif key == "image_turnaround":
       ImageViewerObject.interval = max(0, int(value))
