@@ -39,7 +39,7 @@ class nmcli:
     try:
       command = ['nmcli', '--terse', '--fields', ','.join(fields)]
       command.extend(args)
-      stdout = subprocess.check_output(command).decode('utf-8')
+      stdout = subprocess.check_output(command, env=dict(os.environ, LANG="C")).decode('utf-8')
     
       for line in stdout.split("\n"):
         values = line.split(':', len(fields)-1)
