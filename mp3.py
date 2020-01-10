@@ -15,7 +15,7 @@ import select
 
 os.environ['KIVY_NO_FILELOG'] = '1'
 from kivy.app import App
-from kivy.clock import mainthread, Clock
+from kivy.clock import mainthread
 from kivy.core.window import Window
 from kivy.graphics import Color
 from kivy.logger import Logger
@@ -577,7 +577,6 @@ class Mp3PiApp(App):
 
   def build_settings(self, settings):
     """Kivy App.build_settings() Override Methode."""
-    settings.register_type('scrolloptions', SettingScrollOptions)
     settings.add_json_panel("General", self.config, data="""
       [
         {"type"   : "numeric",
